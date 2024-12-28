@@ -42,17 +42,28 @@ describe("Polkadot Api", () => {
   describe("listOperations", () => {
     it("returns a list regarding address parameter", async () => {
       // When
-      const result = await module.listOperations(address, 21500219);
+      const [tx, _] = await module.listOperations(address, { limit: 100 });
 
       // Then
-      expect(result.length).toBeGreaterThanOrEqual(1);
-      result.forEach(operation => {
+      expect(tx.length).toBeGreaterThanOrEqual(1);
+      tx.forEach(operation => {
         expect(operation.address).toEqual(address);
         const isSenderOrReceipt =
           operation.senders.includes(address) || operation.recipients.includes(address);
         expect(isSenderOrReceipt).toBeTruthy();
       });
     }, 20000);
+
+    it("returns paginated operations", async () => {
+      // When
+      const [tx, idx] = await module.listOperations(address, { limit: 100 });
+      const [tx2, _] = await module.listOperations(address, { limit: 100, start: idx });
+      tx.push(...tx2);
+
+      // Then
+      const checkSet = new Set(tx.map(elt => elt.hash));
+      expect(checkSet.size).toEqual(tx.length);
+    });
   });
 
   describe("lastBlock", () => {
@@ -81,7 +92,7 @@ describe("Polkadot Api", () => {
     it("returns a raw transaction", async () => {
       // When
       const result = await module.craftTransaction(address, {
-        mode: "send",
+        type: "send",
         recipient: "16YreVmGhM8mNMqnsvK7rn7b1e4SKYsTfFUn4UfCZ65BgDjh",
         amount: BigInt(10),
         fee: BigInt(1),

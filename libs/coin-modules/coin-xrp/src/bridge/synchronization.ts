@@ -32,7 +32,7 @@ export const getAccountShape: GetAccountShape = async info => {
   }
 
   const oldOperations = initialAccount?.operations || [];
-  const startAt = oldOperations.length ? (oldOperations[0].blockHeight || 0) + 1 : 0;
+  const blockHeight = oldOperations.length ? (oldOperations[0].blockHeight || 0) + 1 : 0;
 
   const serverInfo = await getServerInfos();
   const ledgers = serverInfo.info.complete_ledgers.split("-");
@@ -41,7 +41,7 @@ export const getAccountShape: GetAccountShape = async info => {
   const balance = new BigNumber(accountInfo.balance);
   const spendableBalance = await calculateSpendableBalance(accountInfo, serverInfo);
 
-  const newOperations = await filterOperations(accountId, address, startAt);
+  const newOperations = await filterOperations(accountId, address, blockHeight);
 
   const operations = mergeOps(oldOperations, newOperations);
 
@@ -61,29 +61,28 @@ export const getAccountShape: GetAccountShape = async info => {
 async function filterOperations(
   accountId: string,
   address: string,
-  startAt: number,
+  blockHeight: number,
 ): Promise<Operation[]> {
-  const operations = await listOperations(address, startAt);
+  const [operations, _] = await listOperations(address, { startAt: blockHeight });
 
-  return operations
-    .filter(op => op.type === "Payment")
-    .map(op => {
-      return {
+  return operations.map(
+    op =>
+      ({
         id: encodeOperationId(accountId, op.hash, op.simpleType),
         hash: op.hash,
         accountId,
         type: op.simpleType,
         value: new BigNumber(op.value.toString()),
         fee: new BigNumber(op.fee.toString()),
-        blockHash: null,
+        blockHash: op.blockHash,
         blockHeight: op.blockHeight,
         senders: op.senders,
         recipients: op.recipients,
         date: op.date,
         transactionSequenceNumber: op.transactionSequenceNumber,
         extra: {},
-      } satisfies Operation;
-    });
+      }) satisfies Operation,
+  );
 }
 
 async function calculateSpendableBalance(

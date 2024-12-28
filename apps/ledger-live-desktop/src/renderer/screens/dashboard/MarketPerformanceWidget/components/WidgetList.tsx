@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { PropsBody, PropsBodyElem } from "../types";
 import { Flex, Text } from "@ledgerhq/react-ui";
 import styled from "@ledgerhq/react-ui/components/styled";
@@ -9,8 +9,10 @@ import { counterValueCurrencySelector, localeSelector } from "~/renderer/reducer
 import { useSelector } from "react-redux";
 import counterValueFormatter from "@ledgerhq/live-common/market/utils/countervalueFormatter";
 import { getChangePercentage } from "~/renderer/screens/dashboard/MarketPerformanceWidget/utils";
+import { useHistory } from "react-router-dom";
+import { track } from "~/renderer/analytics/segment";
 
-export function WidgetList({ data, order, range, top }: PropsBody) {
+export function WidgetList({ data, order, range, top, enableNewFeature }: PropsBody) {
   const noData = data.length === 0;
 
   return (
@@ -19,19 +21,43 @@ export function WidgetList({ data, order, range, top }: PropsBody) {
         <MissingData order={order} range={range} top={top} />
       ) : (
         data.map((elem, i) => (
-          <WidgetRow key={i} index={i + 1} data={elem} isFirst={i === 0} range={range} />
+          <WidgetRow
+            key={i}
+            index={i + 1}
+            data={elem}
+            isFirst={i === 0}
+            range={range}
+            enableNewFeature={enableNewFeature}
+          />
         ))
       )}
     </Flex>
   );
 }
 
-function WidgetRow({ data, index, isFirst, range }: PropsBodyElem) {
+function WidgetRow({ data, index, range, enableNewFeature }: PropsBodyElem) {
   const counterValueCurrency = useSelector(counterValueCurrencySelector);
   const locale = useSelector(localeSelector);
+  const history = useHistory();
+
+  const onCurrencyClick = useCallback(() => {
+    track("widget_asset_clicked", {
+      asset: data.name,
+      page: "Portfolio",
+    });
+
+    history.push({
+      pathname: `/market/${data.id}`,
+    });
+  }, [data, history]);
 
   return (
-    <Flex alignItems="center" mt={isFirst ? 0 : 2} justifyContent="space-between">
+    <MainContainer
+      justifyContent="space-between"
+      py="6px"
+      onClick={enableNewFeature ? onCurrencyClick : undefined}
+      featureFlagEnabled={enableNewFeature}
+    >
       <Flex alignItems="center" flex={1}>
         <Text color="neutral.c80" variant="h5Inter" mr={2}>
           {index}
@@ -98,9 +124,27 @@ function WidgetRow({ data, index, isFirst, range }: PropsBodyElem) {
               })}
         </EllipsisText>
       </Flex>
-    </Flex>
+    </MainContainer>
   );
 }
+
+const MainContainer = styled(Flex)<{ featureFlagEnabled?: boolean }>`
+  transition:
+    background-color 0.35s ease,
+    padding 0.35s ease;
+  border-radius: 12px;
+
+  ${({ featureFlagEnabled, theme }) =>
+    featureFlagEnabled &&
+    `
+      &:hover {
+        transition-delay: 0.15s;
+        background-color: ${theme.colors.opacityDefault.c05};
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+    `}
+`;
 
 const CryptoCurrencyIconWrapper = styled(Flex)<{
   hasImage?: boolean;

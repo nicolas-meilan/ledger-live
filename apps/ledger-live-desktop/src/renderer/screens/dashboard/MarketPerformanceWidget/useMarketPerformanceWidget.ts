@@ -3,17 +3,56 @@ import {
   counterValueCurrencySelector,
   selectedTimeRangeSelector,
 } from "~/renderer/reducers/settings";
-import { useState } from "react";
-import { Order } from "./types";
+import { useCallback, useMemo, useState } from "react";
+import { CurrencyCheck, Order } from "./types";
 
 import { useMarketPerformers } from "@ledgerhq/live-common/market/hooks/useMarketPerformers";
-import { getSlicedList } from "./utils";
+import {
+  filterAvailableBuyOrSwapCurrency,
+  getSlicedListWithFilters,
+  isAvailableOnBuyOrSwap,
+} from "./utils";
 import { useMarketPerformanceFeatureFlag } from "~/renderer/actions/marketperformance";
+import { useRampCatalog } from "@ledgerhq/live-common/platform/providers/RampCatalogProvider/useRampCatalog";
+import { useFetchCurrencyAll } from "@ledgerhq/live-common/exchange/swap/hooks/index";
+import { MarketItemPerformer } from "@ledgerhq/live-common/market/utils/types";
 
-const LIMIT = 5;
+import { listCryptoCurrencies } from "@ledgerhq/cryptoassets/currencies";
+import { listTokens } from "@ledgerhq/cryptoassets/tokens";
+
+const LIMIT_TO_DISPLAY = 5;
 
 export function useMarketPerformanceWidget() {
-  const { refreshRate, top, supported } = useMarketPerformanceFeatureFlag();
+  const { isCurrencyAvailable } = useRampCatalog();
+  const { data: currenciesForSwapAll } = useFetchCurrencyAll();
+
+  const cryptoCurrenciesList = useMemo(() => [...listCryptoCurrencies(), ...listTokens()], []);
+  const cryptoCurrenciesSet = useMemo(
+    () => new Set(cryptoCurrenciesList.map(({ id }) => id.toLowerCase())),
+    [cryptoCurrenciesList],
+  );
+
+  const currenciesForSwapAllSet = useMemo(
+    () => new Set(currenciesForSwapAll),
+    [currenciesForSwapAll],
+  );
+
+  const isAvailable = useCallback(
+    (id: string, type: CurrencyCheck): boolean => {
+      return isAvailableOnBuyOrSwap(id, currenciesForSwapAllSet, isCurrencyAvailable, type);
+    },
+    [currenciesForSwapAllSet, isCurrencyAvailable],
+  );
+
+  const filterAvailable = useCallback(
+    (elem: MarketItemPerformer): boolean => {
+      return filterAvailableBuyOrSwapCurrency(elem, cryptoCurrenciesSet, isAvailable);
+    },
+    [cryptoCurrenciesSet, isAvailable],
+  );
+
+  const { refreshRate, top, supported, limit, enableNewFeature } =
+    useMarketPerformanceFeatureFlag();
 
   const [order, setOrder] = useState<Order>(Order.asc);
 
@@ -24,13 +63,22 @@ export function useMarketPerformanceWidget() {
     sort: order,
     counterCurrency: countervalue.ticker,
     range: timeRange,
-    limit: LIMIT,
+    limit: enableNewFeature ? limit : LIMIT_TO_DISPLAY,
     top,
     supported,
     refreshRate,
   });
 
-  const sliced = getSlicedList(data ?? [], order, timeRange);
+  const sliced = useMemo(() => {
+    return getSlicedListWithFilters(
+      data ?? [],
+      order,
+      timeRange,
+      enableNewFeature,
+      filterAvailable,
+      LIMIT_TO_DISPLAY,
+    );
+  }, [data, enableNewFeature, filterAvailable, order, timeRange]);
 
   return {
     list: sliced,
@@ -40,5 +88,6 @@ export function useMarketPerformanceWidget() {
     hasError: isError,
     range: timeRange,
     top,
+    enableNewFeature,
   };
 }

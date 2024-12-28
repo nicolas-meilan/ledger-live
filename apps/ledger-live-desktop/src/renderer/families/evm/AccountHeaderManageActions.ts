@@ -1,10 +1,11 @@
 import { Account, AccountLike } from "@ledgerhq/types-live";
 import { useCallback } from "react";
 import { useDispatch } from "react-redux";
-import { useTranslation } from "react-i18next";
 import IconCoins from "~/renderer/icons/Coins";
 import { openModal } from "~/renderer/actions/modals";
 import { isAccountEmpty } from "@ledgerhq/live-common/account/index";
+import { useGetStakeLabelLocaleBased } from "~/renderer/hooks/useGetStakeLabelLocaleBased";
+import { useHistory } from "react-router";
 
 type Props = {
   account: AccountLike;
@@ -12,12 +13,27 @@ type Props = {
 };
 
 const AccountHeaderActions = ({ account, parentAccount }: Props) => {
-  const { t } = useTranslation();
   const dispatch = useDispatch();
+  const history = useHistory();
+  const label = useGetStakeLabelLocaleBased();
 
   const isEthereumAccount = account.type === "Account" && account.currency.id === "ethereum";
+  const isBscAccount = account.type === "Account" && account.currency.id === "bsc";
 
-  const onClickStake = useCallback(() => {
+  const onClickStakekit = useCallback(() => {
+    const value = "/platform/stakekit";
+
+    history.push({
+      pathname: value,
+      state: {
+        yieldId: "bsc-bnb-native-staking",
+        accountId: account.id,
+        returnTo: `/account/${account.id}`,
+      },
+    });
+  }, [account.id, history]);
+
+  const onClickStakeModal = useCallback(() => {
     if (isAccountEmpty(account)) {
       dispatch(
         openModal("MODAL_NO_FUNDS_STAKE", {
@@ -34,19 +50,25 @@ const AccountHeaderActions = ({ account, parentAccount }: Props) => {
     }
   }, [account, dispatch, parentAccount]);
 
-  if (isEthereumAccount) {
+  const getStakeAction = useCallback(() => {
+    if (isEthereumAccount) {
+      onClickStakeModal();
+    } else if (isBscAccount) {
+      onClickStakekit();
+    }
+  }, [isEthereumAccount, isBscAccount, onClickStakeModal, onClickStakekit]);
+
+  if (isEthereumAccount || isBscAccount) {
     return [
       {
         key: "Stake",
-        onClick: onClickStake,
+        onClick: getStakeAction,
         event: "button_clicked2",
         eventProperties: {
           button: "stake",
         },
         icon: IconCoins,
-        label: t("account.stake", {
-          currency: account?.currency?.name,
-        }),
+        label,
         accountActionsTestId: "stake-button",
       },
     ];

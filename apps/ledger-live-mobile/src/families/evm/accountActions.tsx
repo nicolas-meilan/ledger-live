@@ -8,6 +8,7 @@ import { ActionButtonEvent, NavigationParamsType } from "~/components/FabActions
 import { NavigatorName, ScreenName } from "~/const";
 import BigNumber from "bignumber.js";
 import { getCryptoCurrencyById } from "@ledgerhq/live-common/currencies/index";
+import { getStakeLabelLocaleBased } from "~/helpers/getStakeLabelLocaleBased";
 
 const ethMagnitude = getCryptoCurrencyById("ethereum").units[0].magnitude ?? 18;
 
@@ -28,6 +29,20 @@ function getNavigatorParams({ parentRoute, account, parentAccount }: Props): Nav
         params: {
           account,
           parentAccount,
+        },
+      },
+    ];
+  }
+
+  if (account.type === "Account" && account.currency.id === "bsc") {
+    return [
+      ScreenName.PlatformApp,
+      {
+        params: {
+          platform: "stakekit",
+          name: "StakeKit",
+          accountId: account.id,
+          yieldId: "bsc-bnb-native-staking",
         },
       },
     ];
@@ -63,7 +78,12 @@ function getNavigatorParams({ parentRoute, account, parentAccount }: Props): Nav
 }
 
 const getMainActions = ({ account, parentAccount, parentRoute }: Props): ActionButtonEvent[] => {
-  if (account.type === "Account" && account.currency.id === "ethereum") {
+  if (
+    account.type === "Account" &&
+    (account.currency.id === "ethereum" || account.currency.id === "bsc")
+  ) {
+    const label = getStakeLabelLocaleBased();
+
     const navigationParams = getNavigatorParams({
       account,
       parentAccount,
@@ -74,10 +94,10 @@ const getMainActions = ({ account, parentAccount, parentRoute }: Props): ActionB
       {
         id: "stake",
         navigationParams,
-        label: <Trans i18nKey="account.stake" />,
+        label: <Trans i18nKey={label} />,
         Icon: IconsLegacy.CoinsMedium,
         eventProperties: {
-          currency: "ETH",
+          currency: account.currency.id === "ethereum" ? "ETH" : "BNB",
         },
       },
     ];

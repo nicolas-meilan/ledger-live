@@ -1,4 +1,9 @@
-import type { Api } from "@ledgerhq/coin-framework/api/index";
+import type {
+  Api,
+  Operation,
+  Pagination,
+  Transaction as ApiTransaction,
+} from "@ledgerhq/coin-framework/api/index";
 import coinConfig, { type StellarConfig } from "../config";
 import {
   broadcast,
@@ -20,7 +25,7 @@ export function createApi(config: StellarConfig): Api {
     estimateFees,
     getBalance,
     lastBlock,
-    listOperations,
+    listOperations: operations,
   };
 }
 
@@ -33,16 +38,7 @@ type Supplement = {
 function isSupplement(supplement: unknown): supplement is Supplement {
   return typeof supplement === "object";
 }
-async function craft(
-  address: string,
-  transaction: {
-    mode: string;
-    recipient: string;
-    amount: bigint;
-    fee: bigint;
-    supplement?: unknown;
-  },
-): Promise<string> {
+async function craft(address: string, transaction: ApiTransaction): Promise<string> {
   const supplement = isSupplement(transaction.supplement)
     ? {
         assetCode: transaction.supplement?.assetCode,
@@ -70,3 +66,8 @@ function compose(tx: string, signature: string, pubkey?: string): string {
   }
   return combine(tx, signature, pubkey);
 }
+
+const operations = async (
+  address: string,
+  { limit, start }: Pagination,
+): Promise<[Operation[], number]> => listOperations(address, { limit, cursor: start });

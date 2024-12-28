@@ -5,21 +5,16 @@ import * as path from "path";
 import { OptionalFeatureMap } from "@ledgerhq/types-live";
 import { getEnv, setEnv } from "@ledgerhq/live-env";
 import { startSpeculos, stopSpeculos, specs } from "@ledgerhq/live-common/e2e/speculos";
+import invariant from "invariant";
 
 import { Application } from "tests/page";
 import { safeAppendFile } from "tests/utils/fileUtils";
 import { launchApp } from "tests/utils/electronUtils";
 import { captureArtifacts } from "tests/utils/allureUtils";
 import { randomUUID } from "crypto";
-import { AppInfos } from "tests/enum/AppInfos";
+import { AppInfos } from "@ledgerhq/live-common/e2e/enum/AppInfos";
 import { lastValueFrom, Observable } from "rxjs";
-import { commandCLI } from "tests/utils/cliUtils";
 import { registerSpeculosTransport } from "@ledgerhq/live-cli/src/live-common-setup";
-
-type Command<T extends (...args: any) => Observable<any> | Promise<any> | string> = {
-  command: T;
-  args: Parameters<T>[0]; // Infer the first argument type
-};
 
 type TestFixtures = {
   lang: string;
@@ -36,7 +31,7 @@ type TestFixtures = {
   featureFlags: OptionalFeatureMap;
   simulateCamera: string;
   app: Application;
-  cliCommands: Command<(typeof commandCLI)[keyof typeof commandCLI]>[];
+  cliCommands?: ((appjsonPath: string) => Observable<unknown> | Promise<unknown> | string)[];
 };
 
 const IS_NOT_MOCK = process.env.MOCK == "0";
@@ -116,25 +111,22 @@ export const test = base.extend<TestFixtures>({
           testInfo.title.replace(/ /g, "_"),
           specs[speculosApp.name.replace(/ /g, "_")],
         );
-        setEnv("SPECULOS_API_PORT", device?.ports.apiPort?.toString());
+        invariant(device, "[E2E Setup] Speculos not started");
+        const speculosApiPort = device.ports.apiPort;
+        invariant(speculosApiPort, "[E2E Setup] speculosApiPort not defined");
+
+        setEnv("SPECULOS_API_PORT", speculosApiPort.toString());
         setEnv("MOCK", "");
 
-        if (cliCommands) {
+        if (cliCommands?.length) {
           registerSpeculosTransport(device?.ports.apiPort);
-          for (const command of cliCommands) {
-            if (command.args && "appjson" in command.args) {
-              command.args.appjson = `${userdataDestinationPath}/app.json`;
-            }
-            const result = await handleResult(command.command(command.args as any));
+          for (const cmd of cliCommands) {
+            const promise = await cmd(`${userdataDestinationPath}/app.json`);
+            const result =
+              promise instanceof Observable ? await lastValueFrom(promise) : await promise;
             console.log("CLI result: ", result);
           }
         }
-      }
-      async function handleResult(result: Promise<any> | Observable<any> | string): Promise<any> {
-        if (result instanceof Observable) {
-          return lastValueFrom(result); // Converts Observable to Promise
-        }
-        return result; // Return Promise directly
       }
 
       // default environment variables
@@ -143,7 +135,7 @@ export const test = base.extend<TestFixtures>({
           ...process.env,
           VERBOSE: true,
           MOCK: IS_NOT_MOCK ? undefined : true,
-          MOCK_COUNTERVALUES: true,
+          MOCK_COUNTERVALUES: IS_NOT_MOCK ? undefined : true,
           HIDE_DEBUG_MOCK: true,
           CI: process.env.CI || undefined,
           PLAYWRIGHT_RUN: true,
@@ -152,8 +144,6 @@ export const test = base.extend<TestFixtures>({
           FEATURE_FLAGS: JSON.stringify(featureFlags),
           MANAGER_DEV_MODE: IS_NOT_MOCK ? true : undefined,
           SPECULOS_API_PORT: IS_NOT_MOCK ? getEnv("SPECULOS_API_PORT")?.toString() : undefined,
-          DISABLE_TRANSACTION_BROADCAST:
-            process.env.ENABLE_TRANSACTION_BROADCAST == "1" || !IS_NOT_MOCK ? undefined : 1,
         },
         env,
       );
